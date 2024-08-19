@@ -40,6 +40,7 @@ public class PdfToElasticsearch {
         String elasticsearchHost = properties.getProperty("elasticsearch.host");
         int elasticsearchPort = Integer.parseInt(properties.getProperty("elasticsearch.port"));
         String pdfIndex = properties.getProperty("elasticsearch.pdf-index");
+        String processedDirectory = properties.getProperty("pdf.directory.processed");
 
         // 2. Connect to Elasticsearch
         RestClient restClient = RestClient.builder(
@@ -56,6 +57,7 @@ public class PdfToElasticsearch {
             Files.walk(Paths.get(pdfDirectory))
                     .filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".pdf"))
+                    .filter(path -> !path.getParent().endsWith(processedDirectory))
                     .forEach(path -> {
                         try {
                             // 3.1 Extract text from PDF
@@ -63,6 +65,9 @@ public class PdfToElasticsearch {
 
                             // 3.2 Index the content into Elasticsearch
                             indexPdfContent(client, path.getFileName().toString(), pdfText, pdfIndex);
+
+                            // 3.3 Move to processed directory
+                            movePdfToProcessed(path, processedDirectory);
 
                         } catch (IOException | ElasticsearchException e) {
                             logger.error("Error processing PDF: " + path, e);
@@ -126,5 +131,15 @@ public class PdfToElasticsearch {
 
         // 5. Log the result
         logger.info("Indexed PDF: {}, result: {}", pdfFileName, response.result().name());
+    }
+
+    private static void movePdfToProcessed(Path pdfFilePath, String processedDirectory) throws IOException {
+        Path processedDirPath = Paths.get(processedDirectory);
+        if (!Files.exists(processedDirPath)) {
+            Files.createDirectories(processedDirPath);
+        }
+        Path targetPath = processedDirPath.resolve(pdfFilePath.getFileName());
+        Files.move(pdfFilePath, targetPath);
+        logger.info("Moved PDF to processed: {}", targetPath);
     }
 }
